@@ -1,0 +1,95 @@
+services:
+  # PHP-FPM
+  php-httpd-socket:
+    build:
+      context: ./docker
+      dockerfile: php.Dockerfile
+    container_name: php-httpd-socket
+    restart: unless-stopped
+    env_file:
+      - env/.env
+    volumes:
+      - ./public:/var/www/html
+      - ./config/php/php.ini:/usr/local/etc/php/conf.d/local.ini:ro
+      - unix-socket:/var/run/php
+      - ./config/php/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+    networks:
+      - php-httpd-socket-network
+    healthcheck:
+      test: [ "CMD", "cgi-fcgi", "-bind", "-connect", "/var/run/php/php-fpm.sock" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Apache Web Server
+  httpd-socket:
+    image: httpd:2.4-alpine
+    container_name: httpd-socket
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./public:/var/www/html
+      - ./config/httpd/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
+      - unix-socket:/var/run/php
+    networks:
+      - php-httpd-socket-network
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      php-httpd-socket:
+        condition: service_healthy
+
+  # MySQL Database
+  mysql-httpd-socket:
+    image: mysql:8.4
+    container_name: mysql-httpd-socket
+    restart: unless-stopped
+    env_file:
+      - env/.env
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      php-httpd-socket-network:
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot",  "-p$$MYSQL_ROOT_PASSWORD" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin
+    container_name: phpmyadmin
+    restart: unless-stopped
+    env_file:
+      - env/.env
+    ports:
+      - "8080:80"
+    depends_on:
+      mysql-httpd-socket:
+        condition: service_healthy
+    networks:
+      php-httpd-socket-network:
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  unix-socket:
+  mysql-data:
+
+networks:
+  php-httpd-socket-network:
+    driver: bridge

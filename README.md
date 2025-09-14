@@ -1,53 +1,48 @@
-# PHP-Apache-Socket — учебный стек на Docker (современная замена XAMPP/MAMP/Open Server)
+# PHP-Httpd-Socket — учебный стек на Docker (современная замена XAMPP/MAMP/Open Server)
 
-Простая, воспроизводимая и «говорящая» среда для изучения PHP и его экосистемы. Стек собирается из контейнеров Docker и предназначен для локальных экспериментов.
+Простая, воспроизводимая и «говорящая» среда для изучения PHP и его экосистемы. Стек собирается из контейнеров Docker и предназначен для локальной разработки и экспериментов.
 
-Важное: этот проект предназначен исключительно для обучения, практики и ознакомления. Не используйте его в проде.
+Важно: этот проект предназначен исключительно для обучения, практики и ознакомления. Не используйте его в production.
 
-## Что внутри (архитектура)
+## Архитектура
 
 Сервисы docker-compose.yml:
-- PHP-FPM 8.4 (контейнер php-apache-socket) — выполняет PHP, слушает Unix-socket, Xdebug установлен, управляется переменными окружения.
-- Apache HTTP Server 2.4 (контейнер apache-socket) — отдаёт статику и проксирует .php в PHP-FPM через Unix-socket; доступен на http://localhost:80.
-- MySQL 8.4 (контейнер mysql-apache-socket) — база данных на localhost:3306, данные в именованном томе mysql-data.
+- PHP-FPM 8.4 (контейнер php-httpd-socket) — выполняет PHP, слушает Unix-socket; Xdebug установлен и управляется переменными окружения.
+- Apache HTTP Server 2.4 (контейнер httpd-socket) — отдаёт статику и проксирует .php в PHP-FPM через Unix-socket; доступен на http://localhost:80.
+- MySQL 8.4 (контейнер mysql-httpd-socket) — база данных на localhost:3306; данные в именованном томе mysql-data.
 - phpMyAdmin (контейнер phpmyadmin) — веб-интерфейс MySQL на http://localhost:8080.
 
-Здоровье (healthchecks):
-- PHP-FPM — проверка fastcgi через сокет (cgi-fcgi -connect /var/run/php/php-fpm.sock).
-- Apache — HTTP-запрос к http://localhost/.
-- MySQL — mysqladmin ping.
-- phpMyAdmin — HTTP-запрос к http://localhost/.
+Healthchecks:
+- PHP-FPM — cgi-fcgi -bind -connect /var/run/php/php-fpm.sock
+- Apache — HTTP-запрос к http://localhost
+- MySQL — mysqladmin ping
+- phpMyAdmin — HTTP-запрос к http://localhost
 
-Порядок старта: apache-socket ожидает, когда php-apache-socket станет healthy.
+Порядок старта: httpd-socket ожидает, когда php-httpd-socket станет healthy.
 
-## Структура репозитория (актуальная)
+## Структура репозитория
 
 ```
-php-apache-socket/
+php-httpd-socket/
 ├── Makefile
 ├── README.md
 ├── config/
-│   ├── apache/
-│   │   └── httpd.conf          # Конфиг Apache (проксирование в PHP-FPM по Unix-socket)
+│   ├── httpd/
+│   │   └── httpd.conf          # Конфиг Apache (mod_proxy_fcgi → PHP-FPM по Unix-socket)
 │   └── php/
-│       └── php.ini             # Конфиг PHP (dev-настройки + Xdebug через env)
+│       ├── php.ini             # Dev-настройки PHP + Xdebug через env
+│       └── www.conf            # Пул FPM: listen=/var/run/php/php-fpm.sock и права на сокет
 ├── docker/
 │   └── php.Dockerfile          # Образ PHP-FPM 8.4 (Alpine) + расширения + Xdebug + Composer
-├── docker-compose.yml          # Основной стек: PHP-FPM (socket), Apache (proxy_fcgi), MySQL, phpMyAdmin
-├── docker-compose.xdebug.yml   # Оверлей для включения Xdebug (mode=start)
-├── docs/
-│   ├── AI-CONTEXT.md           # Контекст/гайдлайны для AI
-│   └── enhancement-plan.md     # Идеи по улучшению
+├── docker-compose.yml          # Основной стек: PHP-FPM (socket), Apache, MySQL, phpMyAdmin
+├── docker-compose.xdebug.yml   # Оверлей: включает Xdebug через переменные окружения
 ├── env/
-│   └── .env.example            # Пример переменных окружения (скопируйте в env/.env)
-└── public/                     # DocumentRoot (монтируется в Apache и PHP-FPM)
-    ├── index.html
-    ├── index.php
-    └── phpinfo.php
+│   └── .env.example            # Шаблон переменных окружения (скопируйте в env/.env)
+└── public/                     # DocumentRoot (общий для Apache и PHP-FPM)
+    └── index.php
 ```
 
-
-Обратите внимание: папки src/ и logs/ отсутствуют. Для обучения достаточно размещать PHP-файлы в public/.
+Примечание: для учебных целей достаточно размещать PHP-файлы в public/.
 
 ## Быстрый старт
 
@@ -57,15 +52,15 @@ php-apache-socket/
 
 Шаги:
 1) Клонируйте репозиторий и перейдите в каталог проекта.
-2) Скопируйте пример env:
-    - mkdir -p env && cp env/.env.example env/.env
-    - при необходимости отредактируйте пароли/имена БД.
+2) Создайте файл с переменными окружения:
+   - mkdir -p env && cp env/.env.example env/.env
+   - при необходимости отредактируйте значения (пароли БД и пр.).
 3) Запустите стек:
-    - make up (или docker compose up -d)
+   - make up
 4) Проверьте доступность:
-    - Web: http://localhost
-    - phpMyAdmin: http://localhost:8080 (сервер mysql-apache-socket)
-    - MySQL: localhost:3306
+   - Web:        http://localhost
+   - phpMyAdmin: http://localhost:8080 (сервер: mysql-httpd-socket)
+   - MySQL:      localhost:3306
 
 Полезные команды Makefile:
 - make setup — создать env/.env из примера
@@ -78,96 +73,94 @@ php-apache-socket/
 PHP (config/php/php.ini):
 - error_reporting=E_ALL, display_errors=On — удобно учиться на ошибках
 - memory_limit=256M, upload_max_filesize=20M, post_max_size=20M
-- opcache включён, validate_timestamps=1 (код обновляется сразу)
-- Xdebug управляется через переменные окружения (см. ниже)
+- OPCache включён, validate_timestamps=1 (горячая перезагрузка кода)
+- Xdebug управляется через переменные окружения (см. раздел «Xdebug»)
 
-Apache (config/apache/httpd.conf):
-- Включён mod_proxy_fcgi.
-- Проксирование .php в PHP-FPM через Unix-socket (например, /var/run/php/php-fpm.sock).
-- AllowOverride All в /var/www/html — можно использовать .htaccess (например, mod_rewrite).
+PHP-FPM (config/php/www.conf):
+- listen = /var/run/php/php-fpm.sock
+- listen.owner = www-data, listen.group = daemon, listen.mode = 0660
+
+Apache (config/httpd/httpd.conf):
+- Включён mod_proxy_fcgi
+- Проксирование .php в PHP-FPM через Unix-socket:
+  ProxyPassMatch ^/(.*\.php(/.*)?)$ unix:/var/run/php/php-fpm.sock|fcgi://localhost/var/www/html/$1
+- AllowOverride All для /var/www/html — можно использовать .htaccess (например, mod_rewrite)
 
 Docker-образ PHP (docker/php.Dockerfile):
-- База: php:8.4-fpm-alpine.
-- Установлены расширения: pdo, pdo_mysql, mysqli, mbstring, xml, gd, bcmath, zip.
-- Установлен Xdebug (через pecl), Composer, fcgi (для healthcheck).
-- PHP-FPM слушает Unix-socket; порт 9000 наружу не используется.
+- База: php:8.4-fpm-alpine
+- Установлены расширения: pdo, pdo_mysql, mysqli, mbstring, xml, gd, bcmath, zip
+- Установлены: Xdebug (pecl), Composer, fcgi (для healthcheck)
+- Порт 9000 наружу не пробрасывается, связь Apache↔FPM — только через Unix-socket
 
-Общий каталог для сокета:
-- Оба контейнера (PHP-FPM и Apache) монтируют общий путь для сокета, например /var/run/php.
-- Путь сокета по умолчанию: /var/run/php/php-fpm.sock.
-
-Права на сокет:
-- Рекомендуется настроить listen.owner / listen.group и listen.mode=660 так, чтобы Apache имел доступ.
-- Для упрощения в учебных целях можно использовать listen.mode=666 (пониженная безопасность — только в локальной среде).
+Общий том для сокета:
+- Оба контейнера (PHP-FPM и Apache) монтируют общий путь /var/run/php (именованный том unix-socket)
+- Путь сокета: /var/run/php/php-fpm.sock
 
 ## Переменные окружения (env/.env)
 
 Минимальный набор (см. env/.env.example):
 - MYSQL_ROOT_PASSWORD — пароль root для MySQL
 - MYSQL_DATABASE — имя создаваемой БД
-- MYSQL_USER, MYSQL_PASSWORD — пользователь и его пароль
-- PMA_HOST=mysql-apache-socket, PMA_ARBITRARY=1 — для phpMyAdmin
+- MYSQL_USER, MYSQL_PASSWORD — пользователь и пароль
+- PMA_HOST=mysql-httpd-socket, PMA_ARBITRARY=1 — для phpMyAdmin
 - Переменные Xdebug (см. ниже)
 
 ## Xdebug: как включить
 
-По умолчанию Xdebug установлен, но выключен (переменные не заданы). Включить можно двумя способами:
+По умолчанию Xdebug установлен, но выключен. Включить можно двумя способами.
 
-Вариант A: оверлейный compose-файл
+Вариант A — оверлейный compose-файл:
 - make xdebug-up
-  (эквивалент docker compose -f docker-compose.yml -f docker-compose.xdebug.yml up -d)
-- Внутри php.ini используются переменные XDEBUG_MODE=debug и XDEBUG_START=yes.
+  (эквивалент docker-compose -f docker-compose.yml -f docker-compose.xdebug.yml up -d)
+- Внутри php.ini используются переменные XDEBUG_MODE=debug и XDEBUG_START=yes
 
-Вариант B: задать переменные в env/.env и перезапустить php-контейнер
+Вариант B — через env/.env и перезапуск контейнера PHP:
 - XDEBUG_MODE=debug
 - XDEBUG_START=yes
-- затем docker compose up -d --no-deps php-apache-socket
+- затем docker-compose up -d --no-deps php-httpd-socket
 
-IDE: подключение по Xdebug 3 на порт 9003, client_host=host.docker.internal.
+IDE: подключение Xdebug 3 на порт 9003, client_host=host.docker.internal.
 
-## Рабочие директории и монтирование
+## Монтирования и данные
 
-- public/ монтируется в /var/www/html одновременно в PHP-FPM и Apache — любые изменения видны сразу.
-- config/php/php.ini монтируется в /usr/local/etc/php/conf.d/local.ini (только чтение).
-- Для MySQL используется именованный том mysql-data (персистентные данные).
-- Для Unix-socket используется общий том/каталог (например, /var/run/php), смонтированный в PHP-FPM и Apache.
+- public/ монтируется в /var/www/html в PHP-FPM и Apache — изменения видны сразу
+- config/php/php.ini → /usr/local/etc/php/conf.d/local.ini (ro)
+- config/php/www.conf → /usr/local/etc/php-fpm.d/www.conf (ro)
+- Именованные тома: mysql-data (данные БД), unix-socket (сокет FPM)
 
 ## Подключение к MySQL из PHP (пример)
 
 ```php
 <?php
-$host = 'mysql-apache-socket';
+$host = 'mysql-httpd-socket';
 $dbname = 'your-db-name';
 $user = 'your-user';
 $pass = 'your-user-password';
 $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
 ```
 
-
 ## Решение проблем
 
 Права на Unix-socket:
-- Если Apache не может связаться с PHP-FPM, проверьте права на /var/run/php/php-fpm.sock.
-- Убедитесь, что пользователь/группа Apache имеет доступ (или временно задайте listen.mode=666).
+- Если Apache не может связаться с PHP-FPM, проверьте права на /var/run/php/php-fpm.sock
+- Убедитесь, что пользователь/группа Apache (daemon:daemon в httpd:alpine) имеет доступ по группе
+- При необходимости временно задайте listen.mode=0666 (только для локальной отладки)
 
-Несовпадение путей:
-- Путь к сокету в Apache должен совпадать с путём, по которому слушает PHP-FPM (и указывать на общий том/каталог, смонтированный в оба контейнера).
+Совпадение путей:
+- Путь к сокету в Apache должен совпадать с путём, по которому слушает PHP-FPM, и указывать на общий том
 
 Порты заняты:
-- Измените привязку в docker-compose.yml, например 8080:80 для Apache, 3307:3306 для MySQL.
+- Измените привязку портов в docker-compose.yml (например, 8080:80 для Apache, 3307:3306 для MySQL)
 
-Контейнеры не стартуют по порядку:
-- Проверьте healthchecks командой docker compose ps; apache-socket зависит от healthy php-apache-socket.
+Порядок запуска:
+- Проверьте healthchecks командой docker-compose ps; httpd-socket зависит от healthy php-httpd-socket
 
 Xdebug не подключается:
-- Проверьте, что используете порт 9003 в IDE, и что XDEBUG_MODE/START заданы (compose.xdebug.yml или env/.env).
+- Убедитесь, что IDE слушает порт 9003 и заданы XDEBUG_MODE/XDEBUG_START
 
 Полная очистка и пересборка:
-- make clean или make clean-all; затем make rebuild и make up.
+- make clean или make clean-all; затем make rebuild и make up
 
 ## Дисклеймер
 
-Проект создан для обучения и экспериментов с PHP-стеком. Не предназначен для production-использования или оценки производительности.
-
-—  
-Если нужна шпаргалка по архитектуре и договорённостям для AI, см. docs/AI-CONTEXT.md.
+Проект создан для обучения и экспериментов с PHP-стеком и не предназначен для production.
