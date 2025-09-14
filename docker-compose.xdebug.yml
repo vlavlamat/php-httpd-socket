@@ -1,0 +1,5 @@
+services:
+  php-httpd-socket:
+    environment:
+      XDEBUG_MODE: "debug"
+      XDEBUG_START: "yes"
